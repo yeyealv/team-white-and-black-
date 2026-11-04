@@ -61,6 +61,13 @@ main{padding:clamp(48px,9vw,110px) clamp(16px,4vw,48px)}
 .card h3{font-family:'Archivo Black',Impact,sans-serif;font-size:1.15rem;margin-top:14px;font-weight:400}
 .card .meta{color:var(--grey);font-size:.9rem}
 .card .price{font-weight:700;margin:6px 0 14px}
+.sizes{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 12px}
+.size{min-width:44px;padding:7px 10px;border:2px solid var(--black);background:transparent;font-weight:700;font-size:.85rem;transition:background .2s,color .2s,transform .2s var(--ease)}
+.size:hover{background:#e8e8e8;transform:translateY(-2px)}
+.size.on{background:var(--black);color:var(--white)}
+.sizes.need{animation:shake .45s}
+.sizes.need::after{content:"Elige tu talla primero";flex-basis:100%;font-size:.8rem;font-weight:700}
+@keyframes shake{20%{transform:translateX(-6px)}40%{transform:translateX(6px)}60%{transform:translateX(-4px)}80%{transform:translateX(4px)}}
 .btn{display:inline-flex;justify-content:center;align-items:center;gap:8px;background:var(--black);color:var(--white);border:2px solid var(--black);padding:12px 18px;font-weight:700;text-decoration:none;margin-top:auto;transition:background .25s,color .25s}
 .btn:hover{background:var(--white);color:var(--black)}
 
@@ -140,6 +147,7 @@ footer .btn:hover{background:transparent;color:var(--white)}
       <p class="meta" id="mMeta"></p>
       <p id="mDesc"></p>
       <p class="price" id="mPrice"></p>
+      <div id="mSlot"></div>
       <a class="btn" id="mWa" href="#" target="_blank" rel="noopener">Pedir por WhatsApp</a>
     </div>
   </div>
@@ -153,7 +161,7 @@ const MONEDA = "$";
 /* Cada producto: agrega, borra o cambia lo que quieras.
    - tipo: "Playera" o "Polo"
    - precio: número (ej. 350). Déjalo en 0 para mostrar "Consultar precio"
-   - tallas: ejemplo "S, M, L, XL" (déjalo vacío "" si no quieres mostrarlas)
+   - tallas: ejemplo "S, M, L, XL" para mostrar solo esas. Vacío "" = XS, S, M, L, XL, XXL (lista TALLAS_DEFAULT más abajo)
    - fotos: lista de imágenes (la primera es la portada) */
 const PRODUCTOS = [
   {nombre:"Hugo Logo", tipo:"Playera", color:"Crema", precio:0, tallas:"", desc:"Playera color crema con logo HUGO bordado al centro.", fotos:["images/n-hugo-logo-crema.jpg"]},
@@ -177,22 +185,56 @@ const PRODUCTOS = [
 const $ = s => document.querySelector(s);
 const precioTxt = p => p > 0 ? MONEDA + p.toLocaleString("es-MX") : "Consultar precio";
 const wa = msg => `https://wa.me/${WHATSAPP}?text=${encodeURIComponent(msg)}`;
-const pedido = p => `Hola, me interesa: ${p.nombre} (${p.tipo}, ${p.color}). ¿Está disponible?`;
+const pedido = (p, talla) => `Hola, me interesa: ${p.nombre} (${p.tipo}, ${p.color}), talla ${talla}. ¿Está disponible?`;
 
 ["#topWa","#footWa","#floatWa"].forEach(id => $(id).href = wa("Hola, quiero información del catálogo de Team White and Black."));
 
 $("#strip").innerHTML = Array(12).fill('<span>TEAM WHITE AND BLACK</span><span>●</span>').join("");
 
 const grid = $("#grid");
-PRODUCTOS.forEach((p,i) => {
+const TALLAS_DEFAULT = ["XS","S","M","L","XL","XXL"];
+const listaTallas = p => p.tallas ? p.tallas.split(",").map(t => t.trim()).filter(Boolean) : TALLAS_DEFAULT;
+
+function crearTallas(p){
+  const box = document.createElement("div");
+  box.className = "sizes"; box.setAttribute("role","group"); box.setAttribute("aria-label","Elige tu talla");
+  box.dataset.talla = "";
+  listaTallas(p).forEach(t => {
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "size"; b.textContent = t;
+    b.onclick = () => {
+      box.querySelectorAll(".size").forEach(x => x.classList.toggle("on", x === b));
+      box.dataset.talla = t; box.classList.remove("need");
+    };
+    box.appendChild(b);
+  });
+  return box;
+}
+function enlazarPedido(btn, box, p){
+  btn.href = "#";
+  btn.onclick = e => {
+    if (!box.dataset.talla){
+      e.preventDefault();
+      box.classList.remove("need"); void box.offsetWidth; box.classList.add("need");
+      return;
+    }
+    btn.href = wa(pedido(p, box.dataset.talla));
+  };
+}
+
+PRODUCTOS.forEach(p => {
   const c = document.createElement("article");
   c.className = "card"; c.dataset.tipo = p.tipo;
   c.innerHTML = `
     <button class="ph" aria-label="Ver ${p.nombre}"><img src="${p.fotos[0]}" alt="${p.nombre} ${p.tipo.toLowerCase()} ${p.color.toLowerCase()}" loading="lazy"><span class="tag">${p.tipo}</span></button>
     <h3>${p.nombre}</h3>
-    <p class="meta">${p.color}${p.tallas ? " · Tallas " + p.tallas : ""}</p>
+    <p class="meta">${p.color}</p>
     <p class="price">${precioTxt(p.precio)}</p>
-    <a class="btn" href="${wa(pedido(p))}" target="_blank" rel="noopener">Pedir por WhatsApp</a>`;
+    <div class="slot"></div>
+    <a class="btn" target="_blank" rel="noopener">Pedir por WhatsApp</a>`;
+  const box = crearTallas(p);
+  c.querySelector(".slot").replaceWith(box);
+  enlazarPedido(c.querySelector(".btn"), box, p);
   c.querySelector(".ph").onclick = () => openModal(p);
   grid.appendChild(c);
 });
@@ -218,10 +260,10 @@ $("#filters").onclick = e => {
 const modal = $("#modal");
 function openModal(p){
   $("#mTitle").textContent = p.nombre;
-  $("#mMeta").textContent = `${p.tipo} · ${p.color}${p.tallas ? " · Tallas " + p.tallas : ""}`;
+  $("#mMeta").textContent = `${p.tipo} · ${p.color}`;
   $("#mDesc").textContent = p.desc;
   $("#mPrice").textContent = precioTxt(p.precio);
-  $("#mWa").href = wa(pedido(p));
+  const box = crearTallas(p); box.id = "mSlot"; $("#mSlot").replaceWith(box); enlazarPedido($("#mWa"), box, p);
   $("#mImgs").innerHTML = p.fotos.map(f => `<img src="${f}" alt="${p.nombre}">`).join("");
   modal.classList.add("open"); document.body.style.overflow = "hidden";
   $("#mClose").focus();
